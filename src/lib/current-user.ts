@@ -20,18 +20,19 @@ export async function getCurrent() {
   }
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { user: null, profile: null } as const;
+  // getClaims() verifies the JWT locally when asymmetric signing keys are on
+  // (no auth round-trip); the proxy already refreshed the session this request.
+  const { data } = await supabase.auth.getClaims();
+  const userId = data?.claims?.sub;
+  if (!userId) return { user: null, profile: null } as const;
 
   const { data: profile } = await supabase
     .from("profiles")
     .select("*")
-    .eq("id", user.id)
+    .eq("id", userId)
     .maybeSingle();
 
-  return { user, profile } as const;
+  return { user: { id: userId }, profile } as const;
 }
 
 /**

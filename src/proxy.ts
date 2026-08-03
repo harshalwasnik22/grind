@@ -36,10 +36,12 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  // IMPORTANT: do not run code between createServerClient and getUser().
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // IMPORTANT: do not run code between createServerClient and getClaims().
+  // getClaims() refreshes the session (via getSession) and, when asymmetric JWT
+  // signing keys are enabled, verifies the token locally — no auth round-trip.
+  // With legacy HS256 keys it transparently falls back to a getUser() call.
+  const { data } = await supabase.auth.getClaims();
+  const userId = data?.claims?.sub ?? null;
 
   const { pathname } = request.nextUrl;
   const isPublic = PUBLIC_PATHS.some(
@@ -47,7 +49,7 @@ export async function proxy(request: NextRequest) {
   );
 
   // Signed-out users hitting a protected route → send to /login.
-  if (!user && !isPublic) {
+  if (!userId && !isPublic) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
     redirectUrl.searchParams.set("next", pathname);
@@ -55,7 +57,7 @@ export async function proxy(request: NextRequest) {
   }
 
   // Signed-in users on /login → send to the dashboard.
-  if (user && pathname === "/login") {
+  if (userId && pathname === "/login") {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/";
     redirectUrl.search = "";

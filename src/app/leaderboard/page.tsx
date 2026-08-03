@@ -9,7 +9,6 @@ import {
   type RankRow,
 } from "@/lib/standings";
 import { createClient } from "@/lib/supabase/server";
-import { localDate } from "@/lib/dates";
 import { CATEGORIES, categoryMeta } from "@/lib/habit-meta";
 import { Panel } from "@/components/ui/panel";
 import { PixelButton } from "@/components/ui/pixel-button";
@@ -49,7 +48,7 @@ export default async function LeaderboardPage({
   const tz = profile.timezone ?? "UTC";
 
   const supabase = await createClient();
-  const { data: season } = await supabase
+  const seasonPromise = supabase
     .from("seasons")
     .select("name, starts_on")
     .eq("group_id", squad.group.id)
@@ -59,11 +58,25 @@ export default async function LeaderboardPage({
     .maybeSingle();
 
   let rows: RankRow[];
+  let season: Awaited<typeof seasonPromise>["data"];
   if (view === "all-time") {
-    rows = await getAllTimeStandings(squad.group.id, squad.members);
+    // Standings don't depend on the season — fetch both in parallel.
+    const [seasonRes, standings] = await Promise.all([
+      seasonPromise,
+      getAllTimeStandings(squad.group.id, squad.members),
+    ]);
+    season = seasonRes.data;
+    rows = standings;
   } else if (view === "category") {
-    rows = await getCategoryStandings(squad.group.id, squad.members, cat, tz);
+    const [seasonRes, standings] = await Promise.all([
+      seasonPromise,
+      getCategoryStandings(squad.group.id, squad.members, cat, tz),
+    ]);
+    season = seasonRes.data;
+    rows = standings;
   } else {
+    // Season view: weekly standings need the season window, so fetch it first.
+    season = (await seasonPromise).data;
     const weekly = await getWeeklyStandings(
       squad.group.id,
       squad.members,
