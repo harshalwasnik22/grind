@@ -1,0 +1,62 @@
+name: Cron
+
+# Triggers the app's cron endpoints on a schedule, replacing Vercel Cron.
+# Vercel's Hobby plan only allows once-per-day crons, but daily-finalize and
+# reminders need hourly granularity to stay timezone-correct, so we drive them
+# from GitHub Actions instead.
+#
+# Requires two repository settings (Settings -> Secrets and variables -> Actions):
+#   - secret   CRON_SECRET  must equal the CRON_SECRET env var set in Vercel
+#   - variable APP_URL      the deployed base URL, e.g. https://grind.vercel.app
+#                           (no trailing slash)
+#
+# NOTE: scheduled workflows only run from the repository's DEFAULT branch, and
+# GitHub may delay a scheduled run by several minutes under load. The minute is
+# offset to :07 to dodge the top-of-hour peak.
+
+on:
+  schedule:
+    - cron: "7 * * * *"    # hourly  -> daily-finalize + reminders
+    - cron: "7 1 * * *"    # daily 01:07 UTC -> season-rollover
+    - cron: "7 12 * * 1"   # weekly Mon 12:07 UTC -> weekly-recap
+  workflow_dispatch: {}     # manual "Run workflow" button -> runs the hourly endpoints
+
+concurrency:
+  group: grind-cron
+  cancel-in-progress: false
+
+env:
+  APP_URL: ${{ vars.APP_URL }}
+  CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+jobs:
+  hourly:
+    if: ${{ github.event.schedule == '7 * * * *' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: daily-finalize
+        run: |
+          curl -fsS --max-time 60 -X POST "$APP_URL/api/cron/daily-finalize" \
+            -H "Authorization: Bearer $CRON_SECRET"
+      - name: reminders
+        run: |
+          curl -fsS --max-time 60 -X POST "$APP_URL/api/cron/reminders" \
+            -H "Authorization: Bearer $CRON_SECRET"
+
+  season-rollover:
+    if: ${{ github.event.schedule == '7 1 * * *' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: season-rollover
+        run: |
+          curl -fsS --max-time 60 -X POST "$APP_URL/api/cron/season-rollover" \
+            -H "Authorization: Bearer $CRON_SECRET"
+
+  weekly-recap:
+    if: ${{ github.event.schedule == '7 12 * * 1' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: weekly-recap
+        run: |
+          curl -fsS --max-time 60 -X POST "$APP_URL/api/cron/weekly-recap" \
+            -H "Authorization: Bearer $CRON_SECRET"
