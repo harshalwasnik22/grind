@@ -20,31 +20,48 @@ const rankTone = ["gold", "info", "magenta"] as const;
 
 export default async function Dashboard() {
   const { user, profile } = await requirePlayer();
-  const squad = await getMyGroup(user.id);
+
+  // Group + habits only need user.id — fetch them together, not in series.
+  const [squad, habits] = await Promise.all([
+    getMyGroup(user.id),
+    getMyHabits(user.id),
+  ]);
   if (!squad) redirect("/groups/new");
 
   const tz = profile.timezone ?? "UTC";
   const today = localDate(tz);
   const weekday = weekdayOf(today);
 
-  const habits = await getMyHabits(user.id);
   const scheduled = habits.filter(
     (h) => Array.isArray(h.schedule) && h.schedule.includes(weekday),
   );
+  const ids = scheduled.map((h) => h.id);
 
   const supabase = await createClient();
-  const ids = scheduled.map((h) => h.id);
+
+  // Today's logs and the active season are independent — run them in parallel.
+  const [logsRes, seasonRes] = await Promise.all([
+    ids.length > 0
+      ? supabase
+          .from("habit_logs")
+          .select("habit_id, value")
+          .eq("user_id", user.id)
+          .eq("log_date", today)
+          .in("habit_id", ids)
+      : null,
+    supabase
+      .from("seasons")
+      .select("name, starts_on, ends_on")
+      .eq("group_id", squad.group.id)
+      .eq("is_active", true)
+      .order("starts_on", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
   const valueMap = new Map<string, number>();
-  if (ids.length > 0) {
-    const { data: logs } = await supabase
-      .from("habit_logs")
-      .select("habit_id, value")
-      .eq("user_id", user.id)
-      .eq("log_date", today)
-      .in("habit_id", ids);
-    for (const l of logs ?? []) {
-      valueMap.set(l.habit_id as string, Number(l.value));
-    }
+  for (const l of logsRes?.data ?? []) {
+    valueMap.set(l.habit_id as string, Number(l.value));
   }
   const entries: QuickLogEntry[] = scheduled.map((h) => ({
     habit: h,
@@ -54,14 +71,7 @@ export default async function Dashboard() {
     (e) => e.habit.daily_target > 0 && e.value >= e.habit.daily_target,
   ).length;
 
-  const { data: season } = await supabase
-    .from("seasons")
-    .select("name, starts_on, ends_on")
-    .eq("group_id", squad.group.id)
-    .eq("is_active", true)
-    .order("starts_on", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const season = seasonRes.data;
 
   const standings = await getWeeklyStandings(
     squad.group.id,
