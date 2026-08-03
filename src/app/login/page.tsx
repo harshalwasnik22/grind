@@ -2,7 +2,7 @@ import { Panel } from "@/components/ui/panel";
 import { LoginForm } from "@/components/login-form";
 
 const errorMessages: Record<string, string> = {
-  link: "That magic link was invalid or expired. Try again.",
+  link: "That code was invalid or expired. Try again.",
   auth: "Something went wrong signing you in. Try again.",
 };
 
@@ -31,7 +31,7 @@ export default async function LoginPage({
           )}
           <LoginForm next={next} />
           <p className="mt-5 text-center text-sm text-muted">
-            No password needed — we&apos;ll email you a one-time magic link.
+            No password needed — we&apos;ll email you a 6-digit code.
           </p>
         </Panel>
       </div>

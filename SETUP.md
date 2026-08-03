@@ -28,20 +28,31 @@ Verify the schema locally any time (no Docker, uses PGlite):
 npm run db:verify
 ```
 
-## 3. Configure magic-link auth
+## 3. Configure passwordless (OTP code) auth
 
-Grind signs in with a passwordless **magic link**. In the dashboard:
+Grind signs in with a passwordless **6-digit email code** (OTP — no magic link,
+so there are no redirect-URL or link-expiry headaches). In the dashboard,
+**Authentication → Emails → Templates → Magic Link**, make the email show the
+code by including `{{ .Token }}`:
 
-1. **Authentication → URL Configuration**: set **Site URL** to your app origin
-   (e.g. `http://localhost:3000`) and add it to **Redirect URLs**.
-2. **Authentication → Email Templates → Magic Link**: point the link at the
-   app's confirm route so the session is exchanged server-side:
+```html
+<h2>Your GRIND code</h2>
+<p>Enter this 6-digit code to sign in:</p>
+<h1 style="letter-spacing:4px">{{ .Token }}</h1>
+<p>It expires in 1 hour. If you didn't request it, ignore this email.</p>
+```
 
-   ```html
-   <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next=/">
-     Log in to GRIND
-   </a>
-   ```
+Notes:
+
+- Editing this template is available on the **free** tier
+  (Authentication → Emails → Templates). Only custom SMTP / higher send-rates
+  are paid.
+- OTP needs **no** Site URL / Redirect URL configuration — nothing redirects.
+- The old magic-link flow still works if you'd rather use a link: point the
+  template at `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next=/`
+  (or keep the stock `{{ .ConfirmationURL }}` link — the confirm route handles
+  the PKCE `?code=` callback too). Then Site URL + Redirect URLs must match your
+  app origin.
 
 ## 4. Run
 

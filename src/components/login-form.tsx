@@ -4,61 +4,143 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PixelButton } from "@/components/ui/pixel-button";
 
-type Status = "idle" | "sending" | "sent" | "error";
+type Step = "email" | "code";
+type Status = "idle" | "sending" | "verifying" | "error";
 
+/** Only follow same-origin relative redirects — never an off-site URL. */
+function safeNext(next: string) {
+  return next.startsWith("/") && !next.startsWith("//") ? next : "/";
+}
+
+/**
+ * Passwordless sign-in with a 6-digit email **OTP** (no magic link). Step 1
+ * sends the code via `signInWithOtp`; step 2 verifies it with `verifyOtp`,
+ * which sets the session cookies in the browser. We then hard-navigate so the
+ * server picks up the session and `requirePlayer` routes new players to
+ * onboarding.
+ *
+ * Requires the Supabase **Magic Link** email template to surface the code —
+ * include `{{ .Token }}` in it (see SETUP.md).
+ */
 export function LoginForm({ next = "/" }: { next?: string }) {
+  const [supabase] = useState(() => createClient());
+  const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState("");
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!email.trim()) return;
+  async function sendCode(e?: React.FormEvent) {
+    e?.preventDefault();
+    const address = email.trim();
+    if (!address) return;
     setStatus("sending");
     setMessage("");
 
-    const supabase = createClient();
-    const emailRedirectTo = `${window.location.origin}/auth/confirm?next=${encodeURIComponent(
-      next,
-    )}`;
-
     const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: { emailRedirectTo, shouldCreateUser: true },
+      email: address,
+      options: { shouldCreateUser: true },
     });
 
     if (error) {
       setStatus("error");
       setMessage(error.message);
     } else {
-      setStatus("sent");
+      setStatus("idle");
+      setStep("code");
     }
   }
 
-  if (status === "sent") {
+  async function verify(e: React.FormEvent) {
+    e.preventDefault();
+    const token = code.trim();
+    if (token.length < 6) return;
+    setStatus("verifying");
+    setMessage("");
+
+    const { error } = await supabase.auth.verifyOtp({
+      email: email.trim(),
+      token,
+      type: "email",
+    });
+
+    if (error) {
+      setStatus("error");
+      setMessage("That code was invalid or expired. Try again.");
+    } else {
+      // Session cookie is set — full navigation so the server sees it.
+      window.location.assign(safeNext(next));
+    }
+  }
+
+  if (step === "code") {
     return (
-      <div className="text-center">
-        <p className="pixel-title text-[0.7rem] text-xp">✉ Check your email</p>
-        <p className="mt-3 text-lg text-muted">
-          We sent a magic link to <span className="text-fg">{email}</span>.
-          Click it to enter the arena.
+      <form onSubmit={verify} className="space-y-4">
+        <p className="text-center text-lg text-muted">
+          Enter the 6-digit code we sent to{" "}
+          <span className="text-fg">{email}</span>.
         </p>
-        <button
-          type="button"
-          onClick={() => {
-            setStatus("idle");
-            setMessage("");
-          }}
-          className="mt-4 text-base text-info underline underline-offset-4"
+
+        <label className="block">
+          <span className="pixel-title text-[0.5rem] uppercase text-muted">
+            Code
+          </span>
+          <div className="pixel-inset mt-2 px-3 py-2">
+            <input
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              required
+              autoFocus
+              maxLength={6}
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+              placeholder="123456"
+              className="w-full bg-transparent text-center text-2xl tracking-[0.4em] text-fg placeholder:text-muted focus:outline-none"
+            />
+          </div>
+        </label>
+
+        {status === "error" && (
+          <p className="text-base text-hp">⚠ {message}</p>
+        )}
+
+        <PixelButton
+          type="submit"
+          variant="primary"
+          disabled={status === "verifying" || code.trim().length < 6}
+          className="w-full"
         >
-          Use a different email
-        </button>
-      </div>
+          {status === "verifying" ? "Verifying…" : "Enter the Arena"}
+        </PixelButton>
+
+        <div className="flex justify-between text-base">
+          <button
+            type="button"
+            onClick={() => {
+              setStep("email");
+              setCode("");
+              setStatus("idle");
+              setMessage("");
+            }}
+            className="text-info underline underline-offset-4"
+          >
+            ← Change email
+          </button>
+          <button
+            type="button"
+            onClick={() => sendCode()}
+            disabled={status === "sending"}
+            className="text-info underline underline-offset-4 disabled:opacity-50"
+          >
+            {status === "sending" ? "Resending…" : "Resend code"}
+          </button>
+        </div>
+      </form>
     );
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
+    <form onSubmit={sendCode} className="space-y-4">
       <label className="block">
         <span className="pixel-title text-[0.5rem] uppercase text-muted">
           Email
@@ -76,9 +158,7 @@ export function LoginForm({ next = "/" }: { next?: string }) {
         </div>
       </label>
 
-      {status === "error" && (
-        <p className="text-base text-hp">⚠ {message}</p>
-      )}
+      {status === "error" && <p className="text-base text-hp">⚠ {message}</p>}
 
       <PixelButton
         type="submit"
@@ -86,7 +166,7 @@ export function LoginForm({ next = "/" }: { next?: string }) {
         disabled={status === "sending"}
         className="w-full"
       >
-        {status === "sending" ? "Sending…" : "Send Magic Link"}
+        {status === "sending" ? "Sending…" : "Send Code"}
       </PixelButton>
     </form>
   );
