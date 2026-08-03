@@ -12,6 +12,9 @@ function safeNext(next: string) {
   return next.startsWith("/") && !next.startsWith("//") ? next : "/";
 }
 
+/** Length of the email OTP — must match Supabase → Auth → "Email OTP length". */
+const OTP_LENGTH = 8;
+
 /**
  * Passwordless sign-in with a 6-digit email **OTP** (no magic link). Step 1
  * sends the code via `signInWithOtp`; step 2 verifies it with `verifyOtp`,
@@ -54,7 +57,7 @@ export function LoginForm({ next = "/" }: { next?: string }) {
   async function verify(e: React.FormEvent) {
     e.preventDefault();
     const token = code.trim();
-    if (token.length < 6) return;
+    if (token.length < OTP_LENGTH) return;
     setStatus("verifying");
     setMessage("");
 
@@ -77,7 +80,7 @@ export function LoginForm({ next = "/" }: { next?: string }) {
     return (
       <form onSubmit={verify} className="space-y-4">
         <p className="text-center text-lg text-muted">
-          Enter the 6-digit code we sent to{" "}
+          Enter the {OTP_LENGTH}-digit code we sent to{" "}
           <span className="text-fg">{email}</span>.
         </p>
 
@@ -91,11 +94,13 @@ export function LoginForm({ next = "/" }: { next?: string }) {
               autoComplete="one-time-code"
               required
               autoFocus
-              maxLength={6}
+              maxLength={OTP_LENGTH}
               value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-              placeholder="123456"
-              className="w-full bg-transparent text-center text-2xl tracking-[0.4em] text-fg placeholder:text-muted focus:outline-none"
+              onChange={(e) =>
+                setCode(e.target.value.replace(/\D/g, "").slice(0, OTP_LENGTH))
+              }
+              placeholder="12345678"
+              className="w-full bg-transparent text-center text-2xl tracking-[0.3em] text-fg placeholder:text-muted focus:outline-none"
             />
           </div>
         </label>
@@ -107,7 +112,7 @@ export function LoginForm({ next = "/" }: { next?: string }) {
         <PixelButton
           type="submit"
           variant="primary"
-          disabled={status === "verifying" || code.trim().length < 6}
+          disabled={status === "verifying" || code.trim().length < OTP_LENGTH}
           className="w-full"
         >
           {status === "verifying" ? "Verifying…" : "Enter the Arena"}

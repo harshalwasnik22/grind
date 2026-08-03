@@ -31,7 +31,7 @@ export default async function LoginPage({
           )}
           <LoginForm next={next} />
           <p className="mt-5 text-center text-sm text-muted">
-            No password needed — we&apos;ll email you a 6-digit code.
+            No password needed — we&apos;ll email you an 8-digit code.
           </p>
         </Panel>
       </div>
