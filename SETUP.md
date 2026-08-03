@@ -31,9 +31,30 @@ npm run db:verify
 ## 3. Configure passwordless (OTP code) auth
 
 Grind signs in with a passwordless **6-digit email code** (OTP — no magic link,
-so there are no redirect-URL or link-expiry headaches). In the dashboard,
-**Authentication → Emails → Templates → Magic Link**, make the email show the
-code by including `{{ .Token }}`:
+so no redirect-URL or link-expiry headaches). Supabase's **built-in** email
+service locks the templates to a magic-link-only default, so surfacing the code
+requires **custom SMTP**. We use **Resend** (also powers the weekly recap).
+
+**a. Resend** (<https://resend.com>, free tier = 3k emails/mo):
+
+1. Create an account. To email anyone other than your own signup address you
+   must **verify a sending domain** (Resend → Domains → add DNS records). Just
+   testing yourself? You can send from `onboarding@resend.dev` to your own email.
+2. Create an **API key** (`re_…`). Reuse it as `RESEND_API_KEY` for recaps too.
+
+**b. Supabase → Authentication → Emails → SMTP Settings** — enable custom SMTP:
+
+| Field | Value |
+| --- | --- |
+| Host | `smtp.resend.com` |
+| Port | `465` |
+| Username | `resend` |
+| Password | your Resend API key (`re_…`) |
+| Sender email | a **verified** Resend address (e.g. `grind@yourdomain.com`) |
+| Sender name | `GRIND` |
+
+**c. Supabase → Authentication → Emails → Templates → Magic Link** — now
+editable; make the email show the code by including `{{ .Token }}`:
 
 ```html
 <h2>Your GRIND code</h2>
@@ -44,15 +65,12 @@ code by including `{{ .Token }}`:
 
 Notes:
 
-- Editing this template is available on the **free** tier
-  (Authentication → Emails → Templates). Only custom SMTP / higher send-rates
-  are paid.
-- OTP needs **no** Site URL / Redirect URL configuration — nothing redirects.
-- The old magic-link flow still works if you'd rather use a link: point the
-  template at `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next=/`
-  (or keep the stock `{{ .ConfirmationURL }}` link — the confirm route handles
-  the PKCE `?code=` callback too). Then Site URL + Redirect URLs must match your
-  app origin.
+- `signInWithOtp` uses the **Magic Link** template for both new and existing
+  users, and `verifyOtp({ type: "email" })` checks the code. OTP needs **no**
+  Site URL / Redirect URL configuration — nothing redirects.
+- Magic-link fallback (if you skip SMTP): keep the stock `{{ .ConfirmationURL }}`
+  email — `src/app/auth/confirm/route.ts` handles the PKCE `?code=` callback —
+  and set Site URL + Redirect URLs to your app origin.
 
 ## 4. Run
 
