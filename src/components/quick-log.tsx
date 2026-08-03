@@ -50,6 +50,9 @@ function QuickLogItem({ habit, initial }: { habit: Habit; initial: number }) {
         color={meta.color}
         label={`${meta.icon} ${habit.name}`}
         note={done ? "done ✓" : undefined}
+        onSeek={(fraction) =>
+          commit(Math.round(fraction * habit.daily_target))
+        }
       />
       <div className="mt-2 flex items-center gap-2">
         <PixelButton

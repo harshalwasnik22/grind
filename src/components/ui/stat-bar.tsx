@@ -20,11 +20,18 @@ type StatBarProps = {
   showValue?: boolean;
   /** Optional trailing note (e.g. "+120xp"). */
   note?: string;
+  /**
+   * Make the bar interactive: click (or arrow keys) reports the chosen
+   * fraction 0–1 of `max`. When set, the track renders as a slider. Only pass
+   * this from a Client Component.
+   */
+  onSeek?: (fraction: number) => void;
 };
 
 /**
  * Segmented pixel progress bar (XP / HP style). Renders a recessed track with
  * a solid fill and dark segment notches drawn on top for the retro look.
+ * Pass `onSeek` to let the user click along the bar to set its value.
  */
 export function StatBar({
   value,
@@ -33,9 +40,32 @@ export function StatBar({
   label,
   showValue = true,
   note,
+  onSeek,
 }: StatBarProps) {
   const safeMax = max <= 0 ? 1 : max;
   const pct = clamp((value / safeMax) * 100, 0, 100);
+  const interactive = typeof onSeek === "function";
+
+  function seekFromPointer(e: React.MouseEvent<HTMLDivElement>) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width === 0) return;
+    onSeek?.(clamp((e.clientX - rect.left) / rect.width, 0, 1));
+  }
+
+  function seekFromKey(e: React.KeyboardEvent<HTMLDivElement>) {
+    const step = 1 / safeMax;
+    const current = value / safeMax;
+    let next: number | null = null;
+    if (e.key === "ArrowRight" || e.key === "ArrowUp") next = current + step;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowDown")
+      next = current - step;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = 1;
+    if (next !== null) {
+      e.preventDefault();
+      onSeek?.(clamp(next, 0, 1));
+    }
+  }
 
   return (
     <div className="w-full">
@@ -59,12 +89,20 @@ export function StatBar({
       )}
 
       <div
-        className="pixel-inset relative h-4 w-full overflow-hidden"
-        role="progressbar"
+        className={`pixel-inset relative h-4 w-full overflow-hidden ${
+          interactive
+            ? "cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-gold"
+            : ""
+        }`}
+        role={interactive ? "slider" : "progressbar"}
         aria-valuenow={value}
         aria-valuemin={0}
         aria-valuemax={max}
         aria-label={label}
+        tabIndex={interactive ? 0 : undefined}
+        title={interactive ? "Click to set progress" : undefined}
+        onClick={interactive ? seekFromPointer : undefined}
+        onKeyDown={interactive ? seekFromKey : undefined}
       >
         <div
           className="absolute inset-y-0 left-0"
