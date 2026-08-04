@@ -29,6 +29,7 @@ env:
   APP_URL: ${{ vars.APP_URL }}
   CRON_SECRET: ${{ secrets.CRON_SECRET }}
 
+
 jobs:
   hourly:
     if: ${{ github.event.schedule == '7 * * * *' || github.event_name == 'workflow_dispatch' }}
@@ -36,7 +37,7 @@ jobs:
     steps:
       - name: daily-finalize
         run: |
-          curl -fsS --max-time 60 -X POST "$APP_URL/api/cron/daily-finalize" \
+          echo $APP_URL && curl -fsS --max-time 60 -X POST "$APP_URL/api/cron/daily-finalize" \ 
             -H "Authorization: Bearer $CRON_SECRET"
       - name: reminders
         run: |
